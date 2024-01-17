@@ -23,7 +23,6 @@
     
     // Lock the mutex to ensure thread safety
     std::unique_lock<std::mutex> lock(this-> mutex);
-    // Check if the server already exists in the configuration
     if (this->server_shards_map.find(request->server()) != this->server_shards_map.end()) {
         lock.unlock();
         return ::grpc::Status(::grpc::StatusCode::INVALID_ARGUMENT, "Server already exists in the configuration");
@@ -45,9 +44,7 @@
         lower_bound = upper_bound + 1;
         upper_bound = lower_bound + per_shard - 1;
     }
-
     lock.unlock();
-    
     return ::grpc::Status::OK;
 }
 /**
