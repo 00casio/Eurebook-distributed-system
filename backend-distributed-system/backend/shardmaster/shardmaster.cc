@@ -1,4 +1,5 @@
 #include "shardmaster.h"
+#include <vector>
 
 /**
  * Based on the server specified in JoinRequest, you should update the
@@ -16,49 +17,44 @@
  * ::grpc::Status(::grpc::StatusCode::INVALID_ARGUMENT, "<your error message
  * here>")
  */
-std::vector<shard_t> calculateNewShards() {
-  std::vector<shard_t> newShards;
-
-  // Sort the existing shards in ascending order of their lower bound
-  sortAscendingInterval(newShards);
-
-  // Calculate the size of each shard after the new server joins
-  size_t shardSize = MAX_KEY / serverInfo.size();
-
-  for (size_t i = 0; i < serverInfo.size(); ++i) {
-    // Calculate the lower and upper bounds for each shard
-    unsigned int lower = i * shardSize;
-    unsigned int upper = (i == serverInfo.size() - 1) ? MAX_KEY : (i + 1) * shardSize - 1;
-
-    // Create the shard and add it to the vector
-    shard_t shard = {lower, upper};
-    newShards.push_back(shard);
-  }
-
-  return newShards;
-}
-
 ::grpc::Status StaticShardmaster::Join(::grpc::ServerContext* context,
                                        const ::JoinRequest* request,
                                        Empty* response) {
     
-     std::string serverAddress = request->server_address();
+    // Lock the mutex to ensure thread safety
+    std::unique_lock<std::mutex> lock(this-> mutex);
 
-    for (const ServerInfo& existingServer : servers_) {
-        if (existingServer.server_address == serverAddress) {
-            return ::grpc::Status(::grpc::StatusCode::INVALID_ARGUMENT, "Server already exists in the configuration");
-        }
+    // Check if the server already exists in the configuration
+    if (this->server_shards_map.find(request->server()) != this->server_shards_map.end()) {
+        lock.unlock();
+        return ::grpc::Status(::grpc::StatusCode::INVALID_ARGUMENT, "Server already exists in the configuration");
     }
-    int i = 0; 
-    std::vector<shard_t> newShards = calculateNewShards();
-    for (auto& server : serverInfo) {
-        server.allocatedShards = newShards[i];
-        i++;
-  }
-serverInfo.push_back(newServer);
-return ::grpc::Status::OK;
-}
+    int num_servers = this->server_shards_map.size() + 1;
+    this->server_list.push_back(request->server());
+    for (auto& server : this->server_list) {
+        this->server_shards_map[server].clear();
+    }
 
+    int num_keys = MAX_KEY - MIN_KEY + 1;
+    int per_shard = num_keys / num_servers;
+    int extra_keys = num_keys % num_servers;
+    int lower_bound = MIN_KEY;
+    int upper_bound = lower_bound + per_shard - 1;
+    for (auto& server : this->server_list) {
+        if (extra_keys > 0) {
+            upper_bound++;
+            extra_keys--;
+        }
+        shard_t new_shard = {lower_bound, upper_bound};
+        this->server_shards_map[server].push_back(new_shard);
+        lower_bound = upper_bound + 1;
+        upper_bound = lower_bound + per_shard - 1;
+    }
+
+    lock.unlock();
+    
+    return ::grpc::Status::OK;
+}
 /**
  * LeaveRequest will specify a list of servers leaving. This will be very
  * similar to join, wherein you should update the shardmaster's internal
@@ -123,3 +119,4 @@ return ::grpc::Status::OK;
                                         ::QueryResponse* response) {
     return ::grpc::Status(::grpc::StatusCode::INVALID_ARGUMENT, "Not implemented yet");
 }
+

@@ -2,7 +2,6 @@
 #define SHARDING_SHARDMASTER_H
 
 #include "../common/common.h"
-
 #include <grpcpp/grpcpp.h>
 #include <unordered_map>
 #include <string>
@@ -25,13 +24,9 @@ class StaticShardmaster : public Shardmaster::Service {
                        ::QueryResponse* response) override;
 
  private:
-  struct ServerInfo {
-    std::string address;
-    std::vector<shard_t> allocatedShards;
-  };
-
-  std::vector<ServerInfo> serverInfo;
-  std::mutex serverInfoMutex;
+  std::mutex mutex; 
+  std::unordered_map<std::string, std::vector<shard_t>> server_shards_map;
+  std::vector<std::string> server_list; 
 };
 
 #endif  // SHARDING_SHARDMASTER_H
