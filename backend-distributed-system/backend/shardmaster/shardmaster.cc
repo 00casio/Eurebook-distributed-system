@@ -38,7 +38,10 @@
     int lower_bound = MIN_KEY;
     int upper_bound = lower_bound + per_shard - 1;
     for (auto& server : this->server_list) {
-        extra_keys > 0 ? (++upper_bound, --extra_keys) : 0;
+        if (extra_keys > 0) {
+            upper_bound++;
+            extra_keys--;
+        }
         shard_t new_shard = {lower_bound, upper_bound};
         this->server_shards_map[server].push_back(new_shard);
         lower_bound = upper_bound + 1;
