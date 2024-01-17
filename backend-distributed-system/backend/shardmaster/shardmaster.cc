@@ -23,7 +23,6 @@
     
     // Lock the mutex to ensure thread safety
     std::unique_lock<std::mutex> lock(this-> mutex);
-
     // Check if the server already exists in the configuration
     if (this->server_shards_map.find(request->server()) != this->server_shards_map.end()) {
         lock.unlock();
@@ -34,17 +33,13 @@
     for (auto& server : this->server_list) {
         this->server_shards_map[server].clear();
     }
-
     int num_keys = MAX_KEY - MIN_KEY + 1;
     int per_shard = num_keys / num_servers;
     int extra_keys = num_keys % num_servers;
     int lower_bound = MIN_KEY;
     int upper_bound = lower_bound + per_shard - 1;
     for (auto& server : this->server_list) {
-        if (extra_keys > 0) {
-            upper_bound++;
-            extra_keys--;
-        }
+        extra_keys > 0 ? (upper_bound++, extra_keys--) : (void)0;
         shard_t new_shard = {lower_bound, upper_bound};
         this->server_shards_map[server].push_back(new_shard);
         lower_bound = upper_bound + 1;
