@@ -112,3 +112,48 @@ int extractID(std::string key){
 
   return stoi(tokens[1]);
 }
+
+void resizeShards(const std::vector<std::string>& server_list,
+                  std::unordered_map<std::string, std::vector<shard_t>>& server_shards_map, bool add) {
+    server_shards_map.clear();
+
+    int num_servers = server_list.size();
+    int num_keys = MAX_KEY - MIN_KEY + 1;
+    int per_shard = num_keys / num_servers;
+    int extra_keys = num_keys % num_servers;
+    int lower_bound = MIN_KEY;
+    int upper_bound = lower_bound + per_shard - 1;
+  if(add){
+    for (const auto& server : server_list) {
+        if (extra_keys > 0) {
+            upper_bound++;
+            extra_keys--;
+        }
+        shard_t new_shard = {lower_bound, upper_bound};
+        server_shards_map[server].push_back(new_shard);
+        lower_bound = upper_bound + 1;
+        upper_bound = lower_bound + per_shard - 1;
+    }
+  }
+    else{
+    int upper = per_shard - 1;
+
+    for (auto v : server_list) {
+        if (extra_keys) {
+            upper++;
+            extra_keys--;
+        } else if (!per_shard) {
+            break;
+        }
+
+        shard_t new_shard;
+        new_shard.lower = lower_bound;
+        new_shard.upper = upper;
+        server_shards_map[v].clear();
+        server_shards_map[v].push_back(new_shard);
+        lower_bound = upper + 1;
+        upper = lower_bound + per_shard - 1;
+    }
+    }
+    
+}

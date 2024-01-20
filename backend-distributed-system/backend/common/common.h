@@ -1,6 +1,6 @@
 #ifndef SHARDING_COMMON_H
 #define SHARDING_COMMON_H
-
+#include <unordered_map>
 #include <string>
 #include <vector>
 #include <iostream>
@@ -82,5 +82,6 @@ std::vector<std::string> parse_value(std::string val, std::string delim);
 //extracts the ID number out of the key
 //you may find the utility helpful when implementing shardmaster
 int extractID(std::string key);
-
+void resizeShards(const std::vector<std::string>& server_list,
+                  std::unordered_map<std::string, std::vector<shard_t>>& server_shards_map,bool add);
 #endif  // SHARDING_COMMON_H

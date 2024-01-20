@@ -23,6 +23,8 @@
     
     // Lock the mutex to ensure thread safety
     std::unique_lock<std::mutex> lock(this-> mutex);
+
+    // Check if the server already exists in the configuration
     if (this->server_shards_map.find(request->server()) != this->server_shards_map.end()) {
         lock.unlock();
         return ::grpc::Status(::grpc::StatusCode::INVALID_ARGUMENT, "Server already exists in the configuration");
@@ -32,24 +34,13 @@
     for (auto& server : this->server_list) {
         this->server_shards_map[server].clear();
     }
-    int num_keys = MAX_KEY - MIN_KEY + 1;
-    int per_shard = num_keys / num_servers;
-    int extra_keys = num_keys % num_servers;
-    int lower_bound = MIN_KEY;
-    int upper_bound = lower_bound + per_shard - 1;
-    for (auto& server : this->server_list) {
-        if (extra_keys > 0) {
-            upper_bound++;
-            extra_keys--;
-        }
-        shard_t new_shard = {lower_bound, upper_bound};
-        this->server_shards_map[server].push_back(new_shard);
-        lower_bound = upper_bound + 1;
-        upper_bound = lower_bound + per_shard - 1;
-    }
+    bool add = true;
+    resizeShards(server_list, server_shards_map,add);
     lock.unlock();
     return ::grpc::Status::OK;
 }
+
+
 /**
  * LeaveRequest will specify a list of servers leaving. This will be very
  * similar to join, wherein you should update the shardmaster's internal
@@ -69,9 +60,24 @@
 ::grpc::Status StaticShardmaster::Leave(::grpc::ServerContext* context,
                                         const ::LeaveRequest* request,
                                         Empty* response) {
-    return ::grpc::Status(::grpc::StatusCode::INVALID_ARGUMENT, "Not implemented yet");
-}
 
+    std::unique_lock<std::mutex> lock(this-> mutex);
+
+    int num_keys = MAX_KEY - MIN_KEY + 1;
+    for (int i = 0; i < request->servers_size(); i++) {
+        if (this->server_shards_map.find(request->servers(i)) == this->server_shards_map.end()) {
+            lock.unlock();
+            return ::grpc::Status(::grpc::StatusCode::INVALID_ARGUMENT, "The given server does not exist!");
+        }
+        this->server_shards_map.erase(request->servers(i));
+        this->server_list.erase(std::find(this->server_list.begin(), this->server_list.end(), request->servers(i)));
+    }
+    bool add = false;
+    resizeShards(server_list, server_shards_map,add);
+
+    lock.unlock();
+    return ::grpc::Status::OK;
+}
 /**
  * Move the specified shard to the target server (passed in MoveRequest) in the
  * shardmaster's internal representation of which server has which shard. Note
@@ -90,11 +96,51 @@
 ::grpc::Status StaticShardmaster::Move(::grpc::ServerContext* context,
                                        const ::MoveRequest* request,
                                        Empty* response) {
-  // Hint: Take a look at get_overlap in common.{h, cc}
-  // Using the function will save you lots of time and effort!
-    return ::grpc::Status(::grpc::StatusCode::INVALID_ARGUMENT, "Not implemented yet");
-}
+    std::unique_lock<std::mutex> lock(this->mutex);
+    if (this->server_shards_map.find(request->server()) == this->server_shards_map.end()) {
+        lock.unlock();
+        return ::grpc::Status(::grpc::StatusCode::INVALID_ARGUMENT, "Server doesn't exist. Move Error!");
+    }
+    shard_t moved_shard;
+    shard_t new_shard;
+    shard_t existing_shard;
+    moved_shard.lower = request->shard().lower();
+    moved_shard.upper = request->shard().upper();
+    for (auto& server_shards : this->server_shards_map) {
+        std::vector<shard_t> updated_shards;
+        for (auto& existing_shard : server_shards.second) {
+            auto overlap_status = get_overlap(existing_shard, moved_shard);
+            existing_shard.lower = existing_shard.lower;
+            existing_shard.upper = existing_shard.upper;
+            switch (overlap_status) {
+                case OverlapStatus::OVERLAP_START:
+                    existing_shard.lower = moved_shard.upper + 1;
+                    updated_shards.push_back(existing_shard);
+                    break;
+                case OverlapStatus::OVERLAP_END:
+                    existing_shard.upper = moved_shard.lower - 1;
+                    updated_shards.push_back(existing_shard);
+                    break;
+                case OverlapStatus::COMPLETELY_CONTAINS:
+                    new_shard.lower = moved_shard.upper + 1;
+                    new_shard.upper = existing_shard.upper;
+                    existing_shard.upper = moved_shard.lower - 1;
+                    updated_shards.push_back(existing_shard);
+                    updated_shards.push_back(new_shard);
+                    break;
+                case OverlapStatus::NO_OVERLAP:
+                    updated_shards.push_back(existing_shard);
+                    break;
+            }
+        }
+        this->server_shards_map[server_shards.first] = updated_shards;
+    }
+    this->server_shards_map[request->server()].push_back(moved_shard);
+    sortAscendingInterval(this->server_shards_map[request->server()]);
 
+    lock.unlock();
+    return ::grpc::Status::OK;
+}
 /**
  * When this function is called, you should store the current servers and their
  * corresponding shards in QueryResponse. Take a look at
@@ -112,6 +158,18 @@
 ::grpc::Status StaticShardmaster::Query(::grpc::ServerContext* context,
                                         const StaticShardmaster::Empty* request,
                                         ::QueryResponse* response) {
-    return ::grpc::Status(::grpc::StatusCode::INVALID_ARGUMENT, "Not implemented yet");
+    std::unique_lock<std::mutex> lock(this->mutex);
+    for (const auto& currentServer : this->server_list) {
+        auto currentConfigEntry = response->add_config();
+        currentConfigEntry->set_server(currentServer);
+        for (const auto& currentShard : this->server_shards_map[currentServer]) {
+            auto currentShardEntry = currentConfigEntry->add_shards();
+            currentShardEntry->set_lower(currentShard.lower);
+            currentShardEntry->set_upper(currentShard.upper);
+        }
+    }
+    lock.unlock();
+    return ::grpc::Status::OK;
 }
+
 
