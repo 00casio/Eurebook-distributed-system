@@ -62,8 +62,6 @@
                                         Empty* response) {
 
     std::unique_lock<std::mutex> lock(this-> mutex);
-
-    int num_keys = MAX_KEY - MIN_KEY + 1;
     for (int i = 0; i < request->servers_size(); i++) {
         if (this->server_shards_map.find(request->servers(i)) == this->server_shards_map.end()) {
             lock.unlock();
