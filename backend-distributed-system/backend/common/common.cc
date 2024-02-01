@@ -157,3 +157,8 @@ void resizeShards(const std::vector<std::string>& server_list,
     }
     
 }
+void logError(const std::string& method, Status& error) {
+    assert(!error.ok());
+    std::cerr << "method " << method << " failed with status code "
+              << error.error_code() << "\nthe error message was: " << error.error_message() << "\n";
+}

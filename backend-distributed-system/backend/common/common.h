@@ -4,7 +4,9 @@
 #include <string>
 #include <vector>
 #include <iostream>
-
+#include <grpcpp/grpcpp.h>
+using namespace std;
+using grpc::Status;
 /* ========================= */
 /* ====== Definitions ====== */
 /* ========================= */
@@ -43,6 +45,12 @@ enum class OverlapStatus {
   COMPLETELY_CONTAINS,
   COMPLETELY_CONTAINED
 };
+
+typedef struct post
+{
+  string user_id;
+  string content;
+} post_t;
 
 /* ========================= */
 /* === Helper functions ==== */
@@ -84,4 +92,5 @@ std::vector<std::string> parse_value(std::string val, std::string delim);
 int extractID(std::string key);
 void resizeShards(const std::vector<std::string>& server_list,
                   std::unordered_map<std::string, std::vector<shard_t>>& server_shards_map,bool add);
+void logError(const std::string& method, Status& error);
 #endif  // SHARDING_COMMON_H

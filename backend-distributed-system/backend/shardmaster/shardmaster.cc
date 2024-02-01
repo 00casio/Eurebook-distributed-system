@@ -29,7 +29,6 @@
         lock.unlock();
         return ::grpc::Status(::grpc::StatusCode::INVALID_ARGUMENT, "Server already exists in the configuration");
     }
-    int num_servers = this->server_shards_map.size() + 1;
     this->server_list.push_back(request->server());
     for (auto& server : this->server_list) {
         this->server_shards_map[server].clear();
@@ -108,8 +107,6 @@
         std::vector<shard_t> updated_shards;
         for (auto& existing_shard : server_shards.second) {
             auto overlap_status = get_overlap(existing_shard, moved_shard);
-            existing_shard.lower = existing_shard.lower;
-            existing_shard.upper = existing_shard.upper;
             switch (overlap_status) {
                 case OverlapStatus::OVERLAP_START:
                     existing_shard.lower = moved_shard.upper + 1;
